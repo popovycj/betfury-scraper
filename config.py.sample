@@ -1,0 +1,6 @@
+proxies = [
+    'proxy_1',
+    'proxy_2',
+    'proxy_3',
+    'proxy_4',
+]
