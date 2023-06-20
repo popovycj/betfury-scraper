@@ -4,53 +4,55 @@ from selenium.common.exceptions import NoSuchElementException, ElementNotInterac
 from fake_useragent import UserAgent
 import time
 import random
-from config import proxies
+from bs4 import BeautifulSoup
+from config import openai_key, proxies
+import openai
 
-# Function to create driver with specified proxy
+def chatgpt_response(title, provider=None):
+    prompt = f"Generate description for casino slot game: {title}."
+    if provider:
+        prompt += f" This game provided by {provider} slot provider."
+
+    prompt += " Up to 5 sentences"
+    openai.api_key = openai_key
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+                {"role": "system", "content": "You are online casino player"},
+                {"role": "user", "content": prompt},
+            ]
+    )
+    result = ''
+    for choice in response.choices:
+        result += choice.message.content
+    return result
+
 def create_driver_with_proxy(proxy):
     options = uc.ChromeOptions()
-
-    # Adding argument to disable the AutomationControlled flag
     options.add_argument("--disable-blink-features=AutomationControlled")
-
-    # Set browser size to Full HD
     options.add_argument("window-size=1920,1080")
-
-    # Set proxy server
+    options.add_argument("--headless")
     if proxy:
         options.add_argument('--proxy-server=%s' % proxy)
-
-    # Set up the Selenium WebDriver (this example uses Chrome)
     driver = uc.Chrome(options=options)
-
-    # Changing the property of the navigator value for webdriver to undefined
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-
     return driver
 
-# Load the CSV file
 df = pd.read_csv('games.csv')
-
-# Initialize the UserAgent object
 ua = UserAgent()
-
-proxy = proxies[1]
-
-# Start without a proxy
+proxy = proxies[0]
 driver = create_driver_with_proxy(None)
 
-# Iterate over each URL and corresponding slug
-for _, row in df.iterrows():
+all_data = []
+
+for index, row in df.iterrows():
     url = row['url']
     slug = row['slug']
+    image = row['image']
     driver.get(url)
-    time.sleep(random.randint(10, 15))  # wait for 10 to 15 seconds
-
-    # Set the user agent
+    time.sleep(random.randint(10, 15))
     user_agent = ua.random
     driver.execute_cdp_cmd("Network.setUserAgentOverride", {"userAgent": user_agent})
-
-    # Try to find the button and click it
     try:
         demo_button = driver.find_element('id', 'demo_button')
         demo_button.click()
@@ -58,25 +60,52 @@ for _, row in df.iterrows():
         print(f'Demo button not found on page {url}')
         continue
     except ElementNotInteractableException:
-        # If button is not interactable, change the proxy and try again
-        driver.close()  # close current driver
-
-        # Choose a random proxy from the list
-        proxy = random.choice([p for p in proxies if p != proxy])
-
-        driver = create_driver_with_proxy(proxy)  # create new driver with updated proxy
-        time.sleep(60)  # wait for 1 minute
-
-        driver.get(url)  # load the URL in the new driver instance
+        print('Timeout 60')
+        time.sleep(60)
+        # proxy = random.choice([p for p in proxies if p != proxy])
+        # driver = create_driver_with_proxy(proxy)
+        # driver.get(url)
         try:
             demo_button.click()
         except ElementNotInteractableException:
-            # If still not interactable, wait for 5 minutes
-            time.sleep(300)  # wait for 5 minutes
+            print(f'Timeout 300, skipping page {url}')
+            time.sleep(300)
             continue
 
-    # Take a screenshot
+    soup = BeautifulSoup(driver.page_source, 'lxml')
+    title = soup.find('title').text
+    description = soup.find('meta', attrs={'name': 'description'})
+    description = description['content']
+    info_title = soup.find('h1', class_='slot__info-title').text
+    table = soup.find('table', class_='slot__table')
+    labels_values = {}
+    if table:
+        rows = table.find_all('tr')
+        for row in rows:
+            labels = row.find_all('p', class_='slot__label')
+            values = row.find_all(['a', 'p'], class_='slot__value')
+            for label, value in zip(labels, values):
+                labels_values[label.text] = value.text
+    # chatgpt_output = chatgpt_response(info_title, None if labels_values['Software:'] == '-' else labels_values['Software:'])
+
+    data = {
+        'meta_title': title,
+        'meta_description': description,
+        'title': info_title,
+        'slug': slug,
+        'url': url,
+        'image': image,
+        # 'chatgpt_output': chatgpt_output
+    }
+    data.update(labels_values)
+    all_data.append(data)
+
     driver.save_screenshot(f'screenshot_{slug}.png')
 
-# Close the browser
+    # Save to CSV after every iteration
+    df = pd.DataFrame(all_data)
+    df.to_csv('data.csv', index=False)
+
+    print(f'Saved {index}th page')
+
 driver.quit()

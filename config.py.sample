@@ -1,6 +1,8 @@
 proxies = [
     'proxy_1',
-    'proxy_2',
-    'proxy_3',
-    'proxy_4',
+    'proxy_1',
+    'proxy_1',
+    'proxy_1',
 ]
+
+openai_key = 'openai_key'
