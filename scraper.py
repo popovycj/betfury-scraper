@@ -73,10 +73,10 @@ for index, row in df.iterrows():
             continue
 
     soup = BeautifulSoup(driver.page_source, 'lxml')
-    title = soup.find('title').text
+    title = title.text if (title := soup.find('title')) else None
     description = soup.find('meta', attrs={'name': 'description'})
-    description = description['content']
-    info_title = soup.find('h1', class_='slot__info-title').text
+    description = description['content'] if description else None
+    info_title = info_title.text if (info_title := soup.find('h1', class_='slot__info-title')) else None
     table = soup.find('table', class_='slot__table')
     labels_values = {}
     if table:
