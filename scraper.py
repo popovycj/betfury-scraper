@@ -7,7 +7,18 @@ import random
 from bs4 import BeautifulSoup
 from config import openai_key, proxies
 import openai
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_random_exponential,
+    retry_if_exception_type
+)
 
+@retry(
+    retry=retry_if_exception_type((openai.error.APIError, openai.error.APIConnectionError, openai.error.RateLimitError, openai.error.ServiceUnavailableError, openai.error.Timeout)),
+    wait=wait_random_exponential(multiplier=1, max=60),
+    stop=stop_after_attempt(10)
+)
 def chatgpt_response(title, provider=None):
     prompt = f"Write a creative and informative description of the casino slot game {title}"
     if provider:
@@ -114,12 +125,16 @@ def chatgpt_response(title, provider=None):
 
 # driver.quit()
 
-data = pd.read_csv('result.csv')
+data = pd.read_csv('output.csv')
 
+# Create new columns for storing the generated responses
 data['gpt_response'] = ''
 
+# Get a slice of the DataFrame starting from the 8th index
+sliced_data = data.iloc[123:]
+
 # Iterate through each row
-for index, row in data.iterrows():
+for index, row in sliced_data.iterrows():
     # Extract 'title' and 'Software' columns
     title = row['title']
     software = row['Software:']
